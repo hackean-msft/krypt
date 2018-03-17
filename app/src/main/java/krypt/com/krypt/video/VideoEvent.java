@@ -16,6 +16,6 @@ public class VideoEvent {
 
     public interface EncryptedVideoActionListener {
         void onPlayClicked(EncryptedVideo encryptedVideo);
-        void onDecryptClicked(EncryptedVideo encryptedVideo);
+        void onDecryptClicked(EncryptedVideo encryptedVideo, int pos);
     }
 }

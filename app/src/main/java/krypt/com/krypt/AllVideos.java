@@ -42,6 +42,7 @@ import krypt.com.krypt.video.VideoEncryptionException;
 import krypt.com.krypt.video.VideoEncryptionHandler;
 import krypt.com.krypt.video.VideoEvent;
 import krypt.com.krypt.video.VideoViewAdapter;
+import static krypt.com.krypt.video.VideoEncryptionHandler.EncryptionHandler;
 
 public class AllVideos extends Fragment implements VideoEvent.VideoActionListener, VideoEncryptionHandler.EncryptionHandler {
 
@@ -64,10 +65,12 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
     MenuItem encryptAction;
 
+    private Context context;
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setHasOptionsMenu(true);
+        this.context = getContext();
     }
 
     @Override
@@ -93,14 +96,19 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
     public void onStart() {
         super.onStart();
 
-        handler.register(this);
         List<Video> videos = getPublicVideos();
-        videoViewAdapter = new VideoViewAdapter(getContext(), this, videos);
+        videoViewAdapter = new VideoViewAdapter(this.context, this, videos);
 
         videosView.setAdapter(videoViewAdapter);
-        videosView.setLayoutManager(new GridLayoutManager(getContext(), calculateNoOfColumns(getContext())));
+        videosView.setLayoutManager(new GridLayoutManager(this.context, calculateNoOfColumns(this.context)));
         videosView.setHasFixedSize(true);
 
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        handler.subscribe(this);
     }
 
     @Override
@@ -119,10 +127,15 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
             this.progressBar.setVisibility(View.VISIBLE);
             this.encryptAction.setVisible(false);
             this.encrypt();
-
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        handler.unSubscribe(this);
     }
 
     public List<Video> getPublicVideos() {
@@ -141,17 +154,20 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
         int i = 0;
         for (String video : externalVideos) {
-            if (!encryptedPath.contains(video)) {
-                videos.add(new Video(video, i));
-                i++;
+            if (new File(video).canWrite()) {
+                if (!encryptedPath.contains(video)) {
+                    videos.add(new Video(video, i));
+                    i++;
+                }
             }
-
         }
 
         for (String video : internalVideos) {
-            if (!encryptedPath.contains(video)) {
-                videos.add(new Video(video, i));
-                i++;
+            if (new File(video).canWrite()) {
+                if (!encryptedPath.contains(video)) {
+                    videos.add(new Video(video, i));
+                    i++;
+                }
             }
         }
 
@@ -168,7 +184,7 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
     public List<String> load(Uri uri) {
         String[] projection = {MediaStore.Video.VideoColumns.DATA};
-        Cursor c = getContext().getContentResolver().query(uri, projection, null, null, null);
+        Cursor c = this.context.getContentResolver().query(uri, projection, null, null, null);
 
         List<String> videos = new ArrayList<>();
 
@@ -190,7 +206,7 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
     @Override
     public void onVideoClicked(Video video) {
-        Intent i = new Intent(getContext(), VideoPlayerActivity.class);
+        Intent i = new Intent(this.context, VideoPlayerActivity.class);
         i.putExtra("path", video.getPath());
         startActivity(i);
     }
@@ -222,20 +238,24 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
     @Override
     public void onVideoEncrypted(EncryptedVideo encryptedVideo) {
-        Video vid = selectedVideosMap.get(encryptedVideo.getOriginalPath());
-        selectedVideos.remove(vid);
-        if (selectedVideos.size() < 1) {
-            videoViewAdapter = new VideoViewAdapter(getContext(), this, new ArrayList<Video>());
-            videosView.setAdapter(videoViewAdapter);
-            File videoFile = new File(vid.getPath());
-            if (!videoFile.delete()) {
-                MessageToast.showSnackBar(getContext(), "Couldn't delete " + videoFile.getAbsoluteFile());
+        try {
+            Video vid = selectedVideosMap.get(encryptedVideo.getOriginalPath());
+            selectedVideos.remove(vid);
+            if (selectedVideos.size() < 1) {
+                videoViewAdapter = new VideoViewAdapter(this.context, this, new ArrayList<Video>());
+                videosView.setAdapter(videoViewAdapter);
+                File videoFile = new File(vid.getPath());
+                if (!videoFile.delete()) {
+                    MessageToast.showSnackBar(this.context, "Couldn't delete " + videoFile.getAbsoluteFile());
+                }
+                videoViewAdapter.setVideos(getPublicVideos());
             }
-            videoViewAdapter.setVideos(getPublicVideos());
-        }
 
-        MessageToast.showSnackBar(getContext(), "Video was encrypted successfully");
-        this.progressBar.setVisibility(View.GONE);
+            MessageToast.showSnackBar(this.context, "Video was encrypted successfully");
+            this.progressBar.setVisibility(View.GONE);
+        } catch (NullPointerException e){
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -258,7 +278,7 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
         protected void onPreExecute() {
             super.onPreExecute();
 
-            for (Video vid : selectedVideos) {
+            for (Video vid : this.videos) {
                 selectedVideosMap.put(vid.getPath(), vid);
             }
         }
@@ -270,9 +290,9 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
             try {
                 encryptedVideos = handler.encypt(new TreeSet<>(videos));
             } catch (IOException e) {
-                MessageToast.showSnackBar(getContext(), e.getMessage());
+                MessageToast.showSnackBar(AllVideos.this.context, e.getMessage());
             } catch (VideoEncryptionException e) {
-                MessageToast.showSnackBar(getContext(), "Error occurred from encryption library");
+                MessageToast.showSnackBar(AllVideos.this.context, "Error occurred from encryption library");
                 e.printStackTrace();
             }
             return encryptedVideos;
@@ -280,8 +300,9 @@ public class AllVideos extends Fragment implements VideoEvent.VideoActionListene
 
         @Override
         protected void onPostExecute(List<EncryptedVideo> encryptedVideos) {
+            Set<EncryptionHandler> observers = handler.getRegisteredObservers();
             for (EncryptedVideo v: encryptedVideos) {
-                for (VideoEncryptionHandler.EncryptionHandler e : handler.getRegisteredObservers()) {
+                for (VideoEncryptionHandler.EncryptionHandler e : observers) {
                     e.onVideoEncrypted(v);
                 }
             }

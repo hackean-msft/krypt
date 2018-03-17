@@ -8,8 +8,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherOutputStream;
@@ -27,7 +29,7 @@ import krypt.com.krypt.utils.PrimaryKeyFactory;
 public class VideoEncryptionHandler {
 
     private static VideoEncryptionHandler instance;
-    private List<EncryptionHandler> encryptionObservers = new ArrayList<>();
+    private Set<EncryptionHandler> encryptionObservers = new HashSet<>();
 
     public static VideoEncryptionHandler newInstance() {
         if (instance == null) {
@@ -40,7 +42,7 @@ public class VideoEncryptionHandler {
 
     }
 
-    public void register(EncryptionHandler encryptionHandler) {
+    public void subscribe(EncryptionHandler encryptionHandler) {
         this.encryptionObservers.add(encryptionHandler);
     }
 
@@ -84,7 +86,7 @@ public class VideoEncryptionHandler {
         return encryptedVideos;
     }
 
-    public void decrypt(EncryptedVideo encryptedVideo) throws IOException, VideoEncryptionException {
+    public Video decrypt(EncryptedVideo encryptedVideo) throws IOException, VideoEncryptionException {
         String encryptedFile = getKryptifiedDirectory() + "/" + encryptedVideo.getId() + ".enc";
         FileInputStream fis = new FileInputStream(encryptedFile);
         FileOutputStream fos = new FileOutputStream(encryptedVideo.getOriginalPath());
@@ -103,10 +105,7 @@ public class VideoEncryptionHandler {
         EncryptedVideo query = realm.where(EncryptedVideo.class).equalTo("id", encryptedVideo.getId()).findFirst();
         query.deleteFromRealm();
         realm.commitTransaction();
-
-        for (EncryptionHandler e : this.encryptionObservers) {
-            e.onVideoDecrypted(video);
-        }
+        return video;
     }
 
     private void encrypt(FileInputStream source, FileOutputStream destination) throws Exception {
@@ -179,12 +178,16 @@ public class VideoEncryptionHandler {
         return video == null;
     }
 
+    public void unSubscribe(EncryptionHandler e) {
+        this.encryptionObservers.remove(e);
+    }
+
     public interface EncryptionHandler {
         void onVideoEncrypted(EncryptedVideo encryptedVideo);
         void onVideoDecrypted(Video video);
     }
 
-    public List<EncryptionHandler> getRegisteredObservers() {
+    public Set<EncryptionHandler> getRegisteredObservers() {
         return this.encryptionObservers;
     }
 }

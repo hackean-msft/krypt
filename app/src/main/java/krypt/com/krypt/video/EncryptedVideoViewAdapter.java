@@ -49,6 +49,15 @@ public class EncryptedVideoViewAdapter extends RecyclerView.Adapter<EncryptedVid
         holder.videoName.setText(videoName.substring(videoName.lastIndexOf("/") + 1));
     }
 
+    public void removeEncryptedVideo(int pos){
+        try {
+            encryptedVideos.remove(pos);
+            notifyItemRemoved(pos);
+        }  catch (IndexOutOfBoundsException e){
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public int getItemCount() {
         return encryptedVideos.size();
@@ -73,9 +82,7 @@ public class EncryptedVideoViewAdapter extends RecyclerView.Adapter<EncryptedVid
         @OnClick(R.id.decrypt_video)
         public void decryptClicked() {
             int pos = getAdapterPosition();
-            encryptedVideoActionListener.onDecryptClicked(encryptedVideos.get(pos));
-            encryptedVideos.remove(pos);
-            notifyItemRemoved(pos);
+            encryptedVideoActionListener.onDecryptClicked(encryptedVideos.get(pos), pos);
         }
 
         @OnClick(R.id.play_video)
